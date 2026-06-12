@@ -1,0 +1,379 @@
+```html
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Notenübersicht</title>
+    
+    <!-- Tailwind CSS (via CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Vue.js (via CDN) -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    
+    <!-- Lucide Icons (via CDN) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Custom Tailwind Configuration -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Verhindert das Scrollen bei geöffneten Inputs auf iOS */
+        body { -webkit-tap-highlight-color: transparent; }
+        [v-cloak] { display: none; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-900 min-h-screen">
+
+    <!-- Vue App Container -->
+    <div id="app" v-cloak class="p-2 sm:p-6 font-sans">
+        <div class="max-w-4xl mx-auto space-y-4">
+            
+            <!-- Kompakter Header -->
+            <div class="bg-slate-900 text-white rounded-2xl p-5 sm:p-6 shadow-lg flex flex-col md:flex-row items-center justify-between gap-4">
+                <div class="flex items-center gap-3 w-full md:w-auto">
+                    <div class="bg-indigo-500 p-2 rounded-xl">
+                        <i data-lucide="calculator" class="w-6 h-6 text-white"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold tracking-tight">Notenübersicht</h1>
+                        <p class="text-indigo-200 text-xs font-medium">Gymnasium Pluspunkte-System</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3 w-full md:w-auto">
+                    <div class="bg-white/10 rounded-xl px-4 py-2 flex-1 md:flex-none flex justify-between md:flex-col md:justify-center items-center">
+                        <span class="text-[10px] text-indigo-200 uppercase font-bold tracking-wider">Ø Schnitt</span>
+                        <span class="text-xl font-bold">{{ overallAvgDisplay }}</span>
+                    </div>
+                    <div class="bg-indigo-600 rounded-xl px-4 py-2 flex-1 md:flex-none flex justify-between md:flex-col md:justify-center items-center">
+                        <span class="text-[10px] text-indigo-200 uppercase font-bold tracking-wider">Pluspunkte</span>
+                        <span class="text-xl font-bold">{{ totalPlusPoints > 0 ? '+' : '' }}{{ totalPlusPoints }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Die kompakte Tabelle/Liste -->
+            <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                
+                <!-- Tabellen-Kopf (nur Desktop) -->
+                <div class="hidden sm:flex px-6 py-3 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider select-none">
+                    <div class="flex-1 ml-9">Fach</div>
+                    <div class="w-24 text-right">Pluspunkte</div>
+                </div>
+
+                <!-- Fächer Liste -->
+                <div class="flex flex-col">
+                    
+                    <div v-for="subject in subjects" :key="subject.id" class="border-b border-slate-200 last:border-0 bg-white hover:bg-slate-50 transition-colors">
+                        
+                        <!-- Kopfzeile (Klickbar) -->
+                        <div @click="toggleExpand(subject.id)" class="px-4 py-3 sm:px-6 flex items-center justify-between cursor-pointer select-none">
+                            <div class="flex items-center gap-3 md:gap-4 flex-1">
+                                <i :data-lucide="expandedSubjectId === subject.id ? 'chevron-down' : 'chevron-right'" class="w-5 h-5 text-slate-400 shrink-0"></i>
+                                <span class="font-semibold text-slate-800 text-sm md:text-base w-32 md:w-48 truncate" :title="subject.name">
+                                    {{ subject.name }}
+                                </span>
+                                
+                                <!-- Desktop Badge -->
+                                <div class="hidden sm:flex items-center gap-2">
+                                    <span :class="['px-2.5 py-0.5 rounded-md border text-sm font-bold', getGradeBadge(calculateStats(subject).exactAvg)]">
+                                        {{ calculateStats(subject).exactAvg !== null ? calculateStats(subject).exactAvg.toFixed(3) : '—' }}
+                                    </span>
+                                    <span v-if="calculateStats(subject).zeugnisNote !== null" class="text-xs font-medium text-slate-400 ml-2">
+                                        Zeugnis: {{ calculateStats(subject).zeugnisNote.toFixed(1) }}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- Mobile Badge -->
+                            <div class="sm:hidden flex items-center mr-3">
+                                <span :class="['text-sm font-bold', getGradeTextColor(calculateStats(subject).exactAvg)]">
+                                    {{ calculateStats(subject).exactAvg !== null ? calculateStats(subject).exactAvg.toFixed(2) : '—' }}
+                                </span>
+                            </div>
+
+                            <!-- Pluspunkte -->
+                            <div class="flex items-center justify-end w-16 md:w-24">
+                                <span :class="['text-sm md:text-base font-bold', getPlusPointColor(calculateStats(subject).plusPoints)]">
+                                    {{ formatPlusPoints(calculateStats(subject)) }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Ausgeklappter Detailbereich -->
+                        <div v-show="expandedSubjectId === subject.id" class="px-4 py-4 sm:px-6 bg-slate-50 border-t border-slate-100 flex flex-col gap-4 shadow-inner">
+                            
+                            <!-- Eingabe & Notenliste -->
+                            <div class="flex flex-col xl:flex-row gap-4 items-start xl:items-center">
+                                
+                                <!-- Formular -->
+                                <form @submit.prevent="addGrade(subject.id)" class="flex bg-white p-1 rounded-lg border border-slate-200 shadow-sm focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-50 transition-all flex-shrink-0">
+                                    <input type="number" step="0.01" min="1" max="6" placeholder="Note" required v-model="inputs[subject.id].grade" class="w-16 bg-transparent px-2 py-1.5 text-sm font-semibold outline-none">
+                                    <div class="w-px bg-slate-200 my-1 mx-1"></div>
+                                    <div class="flex items-center px-1">
+                                        <span class="text-slate-400 text-[10px] font-bold uppercase mr-1">Gew.</span>
+                                        <input type="number" step="0.01" min="0.1" required v-model="inputs[subject.id].weight" class="w-10 bg-transparent text-sm font-semibold outline-none text-center">
+                                    </div>
+                                    <button type="submit" :disabled="!inputs[subject.id].grade" class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white p-1.5 rounded-md transition-colors ml-1">
+                                        <i data-lucide="plus" class="w-4 h-4"></i>
+                                    </button>
+                                </form>
+
+                                <!-- Notenliste Chips -->
+                                <div class="flex flex-wrap gap-1.5 flex-1">
+                                    <div v-for="grade in subject.grades" :key="grade.id" class="flex items-center gap-1 bg-white border border-slate-200 px-2 py-1 rounded-md text-xs shadow-sm group">
+                                        <span :class="['font-bold', getGradeTextColor(grade.value)]">{{ grade.value.toFixed(2) }}</span>
+                                        <span v-if="grade.weight !== 1" class="text-slate-400">({{ grade.weight }}x)</span>
+                                        <button @click="deleteGrade(subject.id, grade.id)" class="text-slate-300 hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity focus:opacity-100 ml-1">
+                                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </div>
+                                    <span v-if="!subject.grades.length" class="text-xs text-slate-400 italic py-1.5">Noch keine Noten eingetragen.</span>
+                                </div>
+                            </div>
+
+                            <!-- Kompakter Wunschnoten-Rechner -->
+                            <div v-if="calculateStats(subject).exactAvg !== null" class="bg-white border border-indigo-100 rounded-lg p-3 flex flex-col sm:flex-row items-center gap-3 text-sm shadow-sm mt-2">
+                                <div class="flex items-center gap-2 font-medium text-indigo-900 w-full sm:w-auto">
+                                    <i data-lucide="target" class="w-4 h-4 text-indigo-500"></i>
+                                    Wunsch-Schnitt:
+                                </div>
+                                <div class="flex items-center gap-2 w-full sm:w-auto">
+                                    <input type="number" step="0.01" min="1" max="6" placeholder="z.B. 4.5" v-model="targetInputs[subject.id].target" class="w-16 border border-slate-200 rounded px-2 py-1 text-sm outline-none focus:border-indigo-400">
+                                    <span class="text-slate-500 text-xs">bei Gew.</span>
+                                    <input type="number" step="0.01" min="0.1" v-model="targetInputs[subject.id].weight" class="w-12 border border-slate-200 rounded px-2 py-1 text-sm outline-none text-center focus:border-indigo-400">
+                                </div>
+                                
+                                <div class="sm:ml-auto w-full sm:w-auto mt-2 sm:mt-0 flex items-center gap-2 border-t sm:border-t-0 sm:border-l border-slate-100 pt-2 sm:pt-0 sm:pl-3">
+                                    <span class="text-slate-500">Benötigte Note:</span>
+                                    <span v-if="calculateRequiredGrade(subject) !== null" :class="['font-bold px-2 py-0.5 rounded', getRequiredGradeBadge(calculateRequiredGrade(subject))]">
+                                        {{ formatRequiredGrade(calculateRequiredGrade(subject)) }}
+                                    </span>
+                                    <span v-else class="text-slate-400 italic text-xs">—</span>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Button für neues Fach -->
+                <div class="p-3 bg-slate-50 border-t border-slate-200">
+                    <button @click="addNewSubject" class="text-sm font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-indigo-50 transition-colors w-full sm:w-auto justify-center">
+                        <i data-lucide="plus" class="w-4 h-4"></i> Neues Fach hinzufügen
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Vue.js Application Logic -->
+    <script>
+        const { createApp, ref, computed, watch, onMounted, nextTick } = Vue;
+
+        const DEFAULT_SUBJECTS = [
+            "Deutsch", "Französisch", "Englisch", "Mathematik",
+            "Biologie", "Chemie", "Physik", "Geschichte",
+            "Wirtschaft und Recht", "Religion", "Schwerpunkt Biologie/Chemie", "Sport - Noten"
+        ];
+
+        createApp({
+            setup() {
+                // Initialisiere Fächer aus LocalStorage oder nutze Defaults
+                const savedSubjects = localStorage.getItem('noten-app-html-v1');
+                const initialSubjects = savedSubjects ? JSON.parse(savedSubjects) : 
+                    DEFAULT_SUBJECTS.map(name => ({ id: crypto.randomUUID(), name, grades: [] }));
+                
+                const subjects = ref(initialSubjects);
+                const expandedSubjectId = ref(null);
+                
+                // State für Eingaben (pro Fach separiert)
+                const inputs = ref({});
+                const targetInputs = ref({});
+
+                // Initialisiere Input-States für jedes Fach
+                const initInputs = () => {
+                    subjects.value.forEach(sub => {
+                        if (!inputs.value[sub.id]) inputs.value[sub.id] = { grade: '', weight: '1' };
+                        if (!targetInputs.value[sub.id]) targetInputs.value[sub.id] = { target: '', weight: '1' };
+                    });
+                };
+                initInputs();
+
+                // Speichern bei jeder Änderung
+                watch(subjects, (newVal) => {
+                    localStorage.setItem('noten-app-html-v1', JSON.stringify(newVal));
+                }, { deep: true });
+
+                // Icons nach Rendering updaten (für Lucide)
+                watch(expandedSubjectId, () => {
+                    nextTick(() => lucide.createIcons());
+                });
+
+                onMounted(() => {
+                    lucide.createIcons();
+                });
+
+                // Auf/Zuklappen
+                const toggleExpand = (id) => {
+                    expandedSubjectId.value = expandedSubjectId.value === id ? null : id;
+                };
+
+                // Berechnungslogik pro Fach
+                const calculateStats = (subject) => {
+                    if (!subject.grades || subject.grades.length === 0) {
+                        return { exactAvg: null, zeugnisNote: null, plusPoints: 0, currentSum: 0, currentWeight: 0 };
+                    }
+
+                    let sum = 0, weightSum = 0;
+                    subject.grades.forEach(g => { sum += (g.value * g.weight); weightSum += g.weight; });
+                    
+                    const exactAvg = weightSum > 0 ? (sum / weightSum) : 0;
+                    const zeugnisNote = Math.round(exactAvg * 2) / 2;
+                    let plusPoints = zeugnisNote > 4 ? (zeugnisNote - 4) : (zeugnisNote < 4 ? (zeugnisNote - 4) * 2 : 0);
+
+                    return { exactAvg, zeugnisNote, plusPoints, currentSum: sum, currentWeight: weightSum };
+                };
+
+                // Gesamt-Statistiken
+                const overallStats = computed(() => {
+                    let totalPlusPoints = 0, activeCount = 0, zeugnisSum = 0;
+                    subjects.value.forEach(sub => {
+                        const stats = calculateStats(sub);
+                        if (stats.exactAvg !== null) {
+                            totalPlusPoints += stats.plusPoints;
+                            zeugnisSum += stats.zeugnisNote;
+                            activeCount++;
+                        }
+                    });
+                    return { 
+                        totalPlusPoints, 
+                        overallAvg: activeCount > 0 ? (zeugnisSum / activeCount) : 0, 
+                        activeCount 
+                    };
+                });
+
+                // Wunschnoten Rechner
+                const calculateRequiredGrade = (subject) => {
+                    const stats = calculateStats(subject);
+                    const targetData = targetInputs.value[subject.id];
+                    
+                    if (stats.exactAvg === null || !targetData.target || !targetData.weight) return null;
+                    
+                    const target = parseFloat(targetData.target);
+                    const weight = parseFloat(targetData.weight);
+                    if (isNaN(target) || isNaN(weight) || weight <= 0) return null;
+
+                    const totalWeightWanted = stats.currentWeight + weight;
+                    const totalSumWanted = target * totalWeightWanted;
+                    return (totalSumWanted - stats.currentSum) / weight;
+                };
+
+                // Aktionen
+                const addGrade = (subjectId) => {
+                    const input = inputs.value[subjectId];
+                    const val = parseFloat(input.grade);
+                    const weight = parseFloat(input.weight);
+                    
+                    if (isNaN(val) || val < 1 || val > 6) {
+                        alert("Bitte eine Note zwischen 1 und 6 eingeben.");
+                        return;
+                    }
+
+                    const subIndex = subjects.value.findIndex(s => s.id === subjectId);
+                    if (subIndex > -1) {
+                        subjects.value[subIndex].grades.push({
+                            id: crypto.randomUUID(),
+                            value: val,
+                            weight: isNaN(weight) || weight <= 0 ? 1 : weight
+                        });
+                        inputs.value[subjectId].grade = ''; // Reset Form
+                    }
+                };
+
+                const deleteGrade = (subjectId, gradeId) => {
+                    const subIndex = subjects.value.findIndex(s => s.id === subjectId);
+                    if (subIndex > -1) {
+                        subjects.value[subIndex].grades = subjects.value[subIndex].grades.filter(g => g.id !== gradeId);
+                    }
+                };
+
+                const addNewSubject = () => {
+                    const name = prompt("Neues Fach:");
+                    if (name && name.trim()) {
+                        const newId = crypto.randomUUID();
+                        subjects.value.push({ id: newId, name: name.trim(), grades: [] });
+                        inputs.value[newId] = { grade: '', weight: '1' };
+                        targetInputs.value[newId] = { target: '', weight: '1' };
+                        nextTick(() => lucide.createIcons());
+                    }
+                };
+
+                // Hilfsfunktionen (Design)
+                const getGradeBadge = (avg) => {
+                    if (avg === null) return 'bg-slate-100 text-slate-500 border-slate-200';
+                    if (avg < 4) return 'bg-red-100 text-red-700 border-red-200';
+                    if (avg >= 4 && avg < 5) return 'bg-amber-100 text-amber-700 border-amber-200';
+                    return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+                };
+
+                const getGradeTextColor = (val) => {
+                    if (val === null) return 'text-slate-400';
+                    if (val < 4) return 'text-red-600';
+                    if (val >= 4 && val < 5) return 'text-amber-600';
+                    return 'text-emerald-600';
+                };
+
+                const getPlusPointColor = (pts) => {
+                    if (pts > 0) return 'text-emerald-600';
+                    if (pts < 0) return 'text-red-600';
+                    return 'text-slate-400';
+                };
+
+                const getRequiredGradeBadge = (grade) => {
+                    if (grade > 6) return 'bg-red-100 text-red-700';
+                    if (grade < 1) return 'bg-emerald-100 text-emerald-700';
+                    return 'bg-slate-100 text-slate-800';
+                };
+
+                // Formatierer
+                const formatPlusPoints = (stats) => {
+                    if (stats.zeugnisNote === null) return '—';
+                    return stats.plusPoints > 0 ? '+' + stats.plusPoints : stats.plusPoints;
+                };
+
+                const formatRequiredGrade = (grade) => {
+                    if (grade > 6) return '> 6.0';
+                    if (grade < 1) return '< 1.0';
+                    return grade.toFixed(2);
+                };
+
+                return {
+                    subjects, expandedSubjectId, inputs, targetInputs,
+                    overallAvgDisplay: computed(() => overallStats.value.activeCount > 0 ? overallStats.value.overallAvg.toFixed(2) : '—'),
+                    totalPlusPoints: computed(() => overallStats.value.totalPlusPoints),
+                    toggleExpand, calculateStats, calculateRequiredGrade,
+                    addGrade, deleteGrade, addNewSubject,
+                    getGradeBadge, getGradeTextColor, getPlusPointColor, getRequiredGradeBadge,
+                    formatPlusPoints, formatRequiredGrade
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+
+```
